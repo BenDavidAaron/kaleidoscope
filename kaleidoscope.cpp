@@ -133,3 +133,150 @@ public:
 };
 
 }
+
+// Parser - Now that we have all the AST componets  defined, we need to take
+// tokens from our lexer and build an AST out of them
+
+// Buffer for one token and fn to get next token from lexer
+static int CurrentToken;
+static int getNextToken() {
+    return CurrentToken = getToken();
+}
+
+// LogError* - Helpers to make errors more readable
+std::unique_ptr<ExprAST> LogError(const char *Str) {
+    fprintf(stderr, "Error: %s\n", Str);
+    return nullptr;
+}
+std::unique_ptr<PrototypeAST> LogErrorP(const char *Str) {
+    LogError(Str);
+    return nullptr;
+}
+
+static std::unique_ptr<ExprAST> ParseExpression();
+
+// Now lets do some basic expression parsing
+// Numerical Expressions first
+static std::unique_ptr<ExprAST> ParseNumberExpr() {
+    auto Result = std::make_unique<NumberExprAST>(NumeralVal);
+    getNextToken(); // This will be a number or a syntax erro
+    return std::move(Result);
+}
+
+// Parens Expression
+static std::unique_ptr<ExprAST> ParseParenExpr() {
+    getNextToken(); // consoom one (
+    auto V = ParseExpression();
+    if (!V)
+        return nullptr;
+    if (CurrentToken != ')')
+        return LogError("expected '(' ya dingus");
+    getNextToken(); // now consoom the )
+    return V;
+}
+
+// Identifier Expressions
+static std::unique_ptr<ExprAST> ParseIdentifierExpr() {
+    std::string IdentifierName = IdentifierStr;
+
+    getNextToken(); // consoom identifier
+
+    if (CurrentToken != '(') // Simple Variable Ref
+        return std::make_unique<VariableExprAST>(IdentifierName);
+
+    // Call
+    getNextToken(); // consoom (
+    std::vector<std::unique_ptr<ExprAST>> Args;
+    if (CurrentToken != ')') {
+        while (true) {
+            if (auto Arg = ParseExpression())
+                Args.push_back(std::move(Arg));
+            else
+             return nullptr;
+
+            if (CurrentToken == ')')
+                break;
+
+            if (CurrentToken != ',')
+                return LogError("Expected ')' or ',' in argument list");
+            getNextToken();
+        }
+    }
+    getNextToken(); // consoom )
+
+    return std::make_unique<CallExprAST>(IdentifierName, std::move(Args));
+}
+
+// Primary Expressions
+static std::unique_ptr<ExprAST> ParsePrimary() {
+    switch (CurrentToken) {
+        default:
+            return LogError("Unknown token when expecting an expression");
+        case tok_identifier:
+            return ParseIdentifierExpr();
+        case tok_number:
+            return ParseNumberExpr();
+        case '(':
+            return ParseParenExpr();
+    }
+}
+
+// Binary Expression parsing
+static std::map<char, int> BinopPrecedence;
+
+// Get precedence of the pending binary operator token
+static int GetTokPrecedence(){
+    if (!isascii(CurrentToken))
+        return -1;
+    // Make sure it's an existent binary operator
+    int TokPrec = BinopPrecedence[CurrentToken];
+    if (TokPrec <= 0) return -1;
+    return TokPrec;
+}
+
+// Expression
+//   ::= primary binary operators
+static std::unique_ptr<ExprAST> ParseExpression() {
+   auto LHS = ParsePrimary();
+   if (!LHS)
+       return nullptr;
+   return ParseBinOpRHS(0, std::move(LHS));
+}
+
+// Bin Op RHS
+static std::unique_ptr<ExprAST> ParseBinOpRHS(int ExprPrec, std::unique_ptr<ExprAST> LHS) {
+    while (true) {
+        int TokPrec = GetTokPrecedence();
+    // If this binop binds at least as tightly as the current, consoom it
+    // Move on if otherwise
+    if (TokPrec < ExprPrec)
+        return LHS;
+    
+    int BinOp = CurrentToken;
+    getNextToken(); // consoom binop
+
+    // Parse the primary expression after the binary operator
+    auto RHS = ParsePrimary();
+    if (!RHS)
+        return nullptr;
+    int NextPrec = GetTokPrecedence();
+    if (TokPrec < NextPrec) {
+        RHS = ParseBinOpRHS(TokPrec + 1, std::move(RHS));
+        if (!RHS)
+            return nullptr;
+    }
+    // Merge LHS/RHS
+    LHS = std::make_unique<BinaryExprAST>(BinOp, std::move(LHS), std::move(RHS));
+    }
+}
+
+
+int main() {
+    // Start with binary operators
+    // 1 is lowest precedence
+    BinopPrecedence['<'] = 10;
+    BinopPrecedence['+'] = 20;
+    BinopPrecedence['-'] = 20;
+    BinopPrecedence['*'] = 40; // highest
+    BinopPrecedence['/'] = 40;
+}
