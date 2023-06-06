@@ -271,6 +271,47 @@ static std::unique_ptr<ExprAST> ParseExpression() {
    return ParseBinOpRHS(0, std::move(LHS));
 }
 
+// Prototype
+//  ::= id '(' id* ')'
+static std::unique_ptr<PrototypeAST> ParsePrototype() {
+    if (CurrentToken != tok_identifier)
+        return LogErrorP("Expected function name in prototype");
+    std::string FnName = IdentifierStr;
+    getNextToken();
+    if (CurrentToken != '(')
+        return LogErrorP("Expected '(' in prototype");
+    // Read the list of argument names
+    std::vector<std::string> ArgNames;
+    while (getNextToken() == tok_identifier)
+        ArgNames.push_back(IdentifierStr);
+    if (CurrentToken != ')')
+        return LogErrorP("Expected ')' in prototype");
+    // success
+    getNextToken(); // consoom )
+    return std::make_unique<PrototypeAST>(FnName, std::move(ArgNames));
+}
+
+static std::unique_ptr<FunctionAST> ParseDefinition() {
+    getNextToken(); // consoom def
+    auto Proto = ParsePrototype();
+    if (!Proto) return nullptr;
+    if (auto E = ParseExpression()) return std::make_unique<FunctionAST>(std::move(Proto), std::move(E));
+    return nullptr;
+}
+
+static std::unique_ptr<PrototypeAST> ParseExtern() {
+    getNextToken(); // consoom extern
+    return ParsePrototype();
+}
+
+static std::unique_ptr<FunctionAST> ParseTopLevelExpr() {
+    if (auto E = ParseExpression()) {
+        // Create an anon prototype
+        auto Proto = std::make_unique<PrototypeAST>("", std::vector<std::string>());
+        return std::make_unique<FunctionAST>(std::move(Proto), std::move(E));
+    }
+    return nullptr;
+}
 
 int main() {
     // Start with binary operators
