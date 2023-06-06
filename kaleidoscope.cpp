@@ -86,7 +86,7 @@ public:
 };
 
 // VariableExprAST - Expression Class for Referencing a Variable, like "a"
-class VariableExprAST : ExprAST {
+class VariableExprAST : public ExprAST {
     std::string Name;
 public:
     VariableExprAST(const std::string &Name) : Name(Name) {}
@@ -234,15 +234,6 @@ static int GetTokPrecedence(){
     return TokPrec;
 }
 
-// Expression
-//   ::= primary binary operators
-static std::unique_ptr<ExprAST> ParseExpression() {
-   auto LHS = ParsePrimary();
-   if (!LHS)
-       return nullptr;
-   return ParseBinOpRHS(0, std::move(LHS));
-}
-
 // Bin Op RHS
 static std::unique_ptr<ExprAST> ParseBinOpRHS(int ExprPrec, std::unique_ptr<ExprAST> LHS) {
     while (true) {
@@ -268,6 +259,16 @@ static std::unique_ptr<ExprAST> ParseBinOpRHS(int ExprPrec, std::unique_ptr<Expr
     // Merge LHS/RHS
     LHS = std::make_unique<BinaryExprAST>(BinOp, std::move(LHS), std::move(RHS));
     }
+}
+
+
+// Expression
+//   ::= primary binary operators
+static std::unique_ptr<ExprAST> ParseExpression() {
+   auto LHS = ParsePrimary();
+   if (!LHS)
+       return nullptr;
+   return ParseBinOpRHS(0, std::move(LHS));
 }
 
 
